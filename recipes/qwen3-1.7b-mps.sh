@@ -3,6 +3,10 @@
 # No --cpu-offload (requires CUDA). Activations stay in unified memory.
 set -euo pipefail
 
+# Pass --resume as first argument to continue from a checkpoint:
+#   bash recipes/qwen3-1.7b-mps.sh --resume
+RESUME_FLAG="${1:-}"
+
 uv run ternary-quench \
   --model Qwen/Qwen3-1.7B \
   --out out/qwen3-1.7b/ternary.pt \
@@ -29,4 +33,5 @@ uv run ternary-quench \
   --hard-gradient-mode boundary \
   --calib c4 \
   --seed 2 \
-  --device mps
+  --device mps \
+  $RESUME_FLAG
