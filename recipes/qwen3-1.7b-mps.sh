@@ -3,7 +3,7 @@
 # No --cpu-offload (requires CUDA). Activations stay in unified memory.
 set -euo pipefail
 
-uv run ternary-quench \
+PYTHONUNBUFFERED=1 uv run ternary-quench \
   --model Qwen/Qwen3-1.7B \
   --out out/qwen3-1.7b/ternary.pt \
   --checkpoint-dir out/qwen3-1.7b/checkpoints \
