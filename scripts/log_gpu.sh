@@ -29,10 +29,10 @@ gpu_freq=""
 
 sudo powermetrics --samplers gpu_power -i "$INTERVAL" 2>/dev/null | \
 while IFS= read -r line; do
-  if [[ "$line" == *"GPU Active Residency"* ]]; then
+  if [[ "$line" == *"GPU HW active residency"* ]]; then
     gpu_pct=$(echo "$line" | grep -oE '[0-9]+\.[0-9]+' | head -1)
 
-  elif [[ "$line" == *"GPU Frequency"* ]]; then
+  elif [[ "$line" == *"GPU HW active frequency"* ]]; then
     gpu_freq=$(echo "$line" | grep -oE '[0-9]+' | head -1)
 
   elif [[ "$line" == *"GPU Power"* ]]; then
