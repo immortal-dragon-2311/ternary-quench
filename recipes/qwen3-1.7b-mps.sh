@@ -8,7 +8,7 @@ uv run ternary-quench \
   --out out/qwen3-1.7b/ternary.pt \
   --checkpoint-dir out/qwen3-1.7b/checkpoints \
   --nsamples 128 \
-  --seqlen 2048 \
+  --seqlen 1024 \
   --epochs 60 \
   --batch-size 1 \
   --num-layer 4 \
