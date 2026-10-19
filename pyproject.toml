@@ -12,6 +12,7 @@ dependencies = [
   "huggingface-hub>=1.5.0,<2.0",
   "jsonschema>=4.20",
   "numpy>=1.26,<2",
+  "psutil>=5.9",
   "safetensors>=0.5",
   "torch==2.7.1",
   "torchvision==0.22.1",
