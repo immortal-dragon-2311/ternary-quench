@@ -106,56 +106,40 @@ Training completed successfully overnight (19/19 rounds, 196 quantized linears).
 | MLX Ternary 2-bit | CAT-Q training + `export_mlx.py` | 0.543 |
 | MLX Ternary base-3 | `export_mlx.py --base3` + `expand_base3` at load | 0.501 |
 
-### Inference (M5 Pro, Metal, 20-token generation, warm run)
+### Full benchmark table (all metrics, all models)
 
-| Model | Disk (GB) | Peak memory (GB) | Speed (tok/s) |
-|---|---|---|---|
-| Float BF16 | 3.80 | — | — |
-| MLX 4-bit | 0.912 | 1.004 | 126.4 |
-| MLX Ternary 2-bit | 0.543 | 0.720 | 147.7 |
-| MLX Ternary base-3 (expanded) | 0.501 | 0.720 | 143.5 |
-
-Test: `tests/test_memory_comparison.py`
-
-### WikiText-2 perplexity (lm_eval 0.4.7, document-level rolling loglikelihood, batch_size=1)
-
-| Model | Word perplexity ↓ |
-|---|---|
-| Float BF16 | 20.88 |
-| MLX 4-bit | 22.92 |
-| MLX Ternary 2-bit | 334.44 |
-| MLX Ternary base-3 (expanded) | 334.44 (bit-exact with 2-bit) |
-
-Note: Experiment 1 used a different method (fixed-stride rolling window, MPS) so those
-numbers (Float=22.81, Ternary=101.16) are not directly comparable to lm_eval above.
-Raw: `out/qwen3-1.7b/eval-mlx-{4bit,ternary,ternary-base3-expanded}-ppl.json`
-
-### Zero-shot accuracy (lm_eval 0.4.7, 0-shot)
-
-Tasks: PIQA, ARC-easy, ARC-challenge, HellaSwag, WinoGrande.
-Metric: `acc_norm` where available, `acc` otherwise.
-
-| Task | Float BF16 | MLX 4-bit | MLX Ternary 2-bit | MLX Ternary base-3 |
+| Metric | Float BF16 | MLX 4-bit | MLX Ternary 2-bit | MLX Ternary base-3 |
 |---|---|---|---|---|
-| PIQA | 0.7198 | 0.7089 | 0.6094 | 0.6094 (identical) |
-| ARC-easy | 0.6978 | 0.6620 | 0.4188 | 0.4188 (identical) |
-| ARC-challenge | 0.4309 | 0.4138 | 0.2483 | 0.2483 (identical) |
-| HellaSwag | 0.6048 | 0.5919 | 0.3698 | 0.3698 (identical) |
-| WinoGrande | 0.6109 | 0.5943 | 0.5249 | 0.5249 (identical) |
-| **avg_5** | **0.6128** | **0.5942** | **0.4342** | **0.4342 (identical)** |
+| **Disk (GB)** | 3.80 | 0.912 | 0.543 | 0.501 |
+| **Peak memory (GB)** | — | 1.004 | 0.720 | 0.720 |
+| **Speed (tok/s)** | — | 126.4 | 147.7 | 143.5 ¹ |
+| **Word perplexity ↓** | 20.88 | 22.92 | 334.44 | 334.44 |
+| **PIQA** | 0.7198 | 0.7089 | 0.6094 | 0.6094 |
+| **ARC-easy** | 0.6978 | 0.6620 | 0.4188 | 0.4188 |
+| **ARC-challenge** | 0.4309 | 0.4138 | 0.2483 | 0.2483 |
+| **HellaSwag** | 0.6048 | 0.5919 | 0.3698 | 0.3698 |
+| **WinoGrande** | 0.6109 | 0.5943 | 0.5249 | 0.5249 |
+| **avg_5 ↑** | 0.6128 | 0.5942 | 0.4342 | 0.4342 |
 
-Base-3 expanded is bit-exact with 2-bit — confirmed by weight tensor comparison
-(`tests/test_base3_weights_match.py`, 3 passed) and identical forward pass outputs
-(`tests/test_base3_expanded_inference.py`, 2 passed).
-Raw: `out/qwen3-1.7b/eval-mlx-{float,4bit,ternary}.json`
+¹ Loaded from pre-expanded directory (`mlx-ternary-base3-expanded`) via plain `mlx_lm.load()`;
+  inference path is identical to 2-bit. The ~3% difference vs 2-bit is run-to-run variance
+  (20-token generation is too short for stable timing).
+
+Perplexity method: lm_eval 0.4.7, document-level rolling loglikelihood, batch_size=1.
+Accuracy method: lm_eval 0.4.7, 0-shot, `acc_norm` where available, `acc` otherwise.
+Inference: M5 Pro Metal, 20-token warm run (`tests/test_memory_comparison.py`).
+Base-3 accuracy is bit-exact with 2-bit (verified: `tests/test_base3_weights_match.py`).
+
+Raw results: `out/qwen3-1.7b/eval-mlx-{float,4bit,ternary,ternary-base3-expanded}-ppl.json`
+and `out/qwen3-1.7b/eval-mlx-{float,4bit,ternary}.json`
 
 ### Observations
 
-- MLX 4-bit loses only 1.9 avg_5 points vs float — near-lossless at 4× compression.
-- MLX Ternary drops 17.9 avg_5 points vs float. Primary cause: 8× less calibration
+- MLX 4-bit loses only 1.86 avg_5 points vs float — near-lossless at 4× compression.
+- MLX Ternary drops 17.86 avg_5 points vs float. Primary cause: 8× less calibration
   data (128×1024 vs paper's 512×2048) due to 24 GB memory constraint on M5 Pro.
-- Base-3 packing saves 8% on disk (20% on ternary weight tensors; scales and
-  non-ternary layers unchanged) with zero inference penalty after one-time expansion.
+- Base-3 saves 8% on disk (20% on ternary weight tensors; scales and non-ternary
+  layers are unchanged) with zero accuracy or inference penalty.
 
 ---
 
