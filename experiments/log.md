@@ -121,7 +121,7 @@ Test: `tests/test_memory_comparison.py`
 
 | Model | Word perplexity ↓ |
 |---|---|
-| Float BF16 | — (pending) |
+| Float BF16 | 20.88 |
 | MLX 4-bit | 22.92 |
 | MLX Ternary 2-bit | 334.44 |
 | MLX Ternary base-3 (expanded) | 334.44 (bit-exact with 2-bit) |
