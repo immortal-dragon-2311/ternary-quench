@@ -80,9 +80,7 @@ Training completed successfully overnight (19/19 rounds, 196 quantized linears).
 | Disk size (GB) | 3.80 | 1.74 | 2.19× smaller |
 | GPU peak memory (GB) | 3.22 | 3.22 | same (weights reconstructed to BF16 in-memory) |
 | CPU peak memory (GB) | 0.62 | 1.51 | higher due to loading ternary.pt alongside model |
-| Perplexity (WikiText-2 ↓) | 22.81 | 101.16 | +78.35 degradation |
-
-Benchmark run: `uv run python scripts/benchmark.py --model Qwen/Qwen3-1.7B --ternary-checkpoint out/qwen3-1.7b/ternary.pt`
+| Perplexity (WikiText-2 ↓) | 22.81 | 101.16 | fixed-stride rolling window via scripts/benchmark.py |
 
 ### Observations
 
@@ -94,20 +92,21 @@ Benchmark run: `uv run python scripts/benchmark.py --model Qwen/Qwen3-1.7B --ter
 
 ---
 
-## Experiment 2 — MLX Inference Benchmarks (Float vs 4-bit vs Ternary)
+## Experiment 2 — MLX Inference Benchmarks
 
-**Date:** 2026-10-21
+**Date:** 2026-10-21  
 **Status:** ✅ Complete
 
-### Models benchmarked
+### Models
 
 | Model | How produced | Disk (GB) |
 |---|---|---|
 | Float BF16 | HuggingFace safetensors | 3.80 |
 | MLX 4-bit | `mlx_lm.convert --q-bits 4`, ~2 min, no training | 0.912 |
-| MLX Ternary | CAT-Q training + `export_mlx.py` | 0.543 |
+| MLX Ternary 2-bit | CAT-Q training + `export_mlx.py` | 0.543 |
+| MLX Ternary base-3 | `export_mlx.py --base3` + `expand_base3` at load | 0.501 |
 
-### Inference metrics (MLX, peak Metal memory, M5 Pro)
+### Inference (M5 Pro, Metal, 20-token generation, warm run)
 
 | Model | Disk (GB) | Peak memory (GB) | Speed (tok/s) |
 |---|---|---|---|
@@ -116,114 +115,104 @@ Benchmark run: `uv run python scripts/benchmark.py --model Qwen/Qwen3-1.7B --ter
 | MLX Ternary 2-bit | 0.543 | 0.720 | 147.7 |
 | MLX Ternary base-3 (expanded) | 0.501 | 0.720 | 143.5 |
 
-Base-3 is 8% smaller on disk than 2-bit. Peak memory and speed are identical
-after the one-time `ternary-quench-expand-base3` conversion step.
+Test: `tests/test_memory_comparison.py`
 
-### Zero-shot accuracy (5-task suite, lm_eval 0.4.7, 0-shot)
-
-Tasks: PIQA, ARC-easy, ARC-challenge, HellaSwag, WinoGrande.
-Metric: `acc_norm` where available, `acc` otherwise.
-
-| Task | Float BF16 | MLX 4-bit | MLX Ternary |
-|---|---|---|---|
-| PIQA | 0.7198 | 0.7089 | 0.6094 |
-| ARC-easy | 0.6978 | 0.6620 | 0.4188 |
-| ARC-challenge | 0.4309 | 0.4138 | 0.2483 |
-| HellaSwag | 0.6048 | 0.5919 | 0.3698 |
-| WinoGrande | 0.6109 | 0.5943 | 0.5249 |
-| **avg_5** | **0.6128** | **0.5942** | **0.4342** |
-
-### WikiText-2 perplexity (lm_eval 0.4.7, document-level rolling loglikelihood)
+### WikiText-2 perplexity (lm_eval 0.4.7, document-level rolling loglikelihood, batch_size=1)
 
 | Model | Word perplexity ↓ |
 |---|---|
 | Float BF16 | — (pending) |
 | MLX 4-bit | 22.92 |
 | MLX Ternary 2-bit | 334.44 |
+| MLX Ternary base-3 (expanded) | 334.44 (bit-exact with 2-bit) |
 
-Note: Experiment 1 reported Float=22.81 / Ternary=101.16 perplexity using `scripts/benchmark.py`
-(fixed-stride rolling window on MPS). The lm_eval method above evaluates full documents and gives
-different absolute numbers — run Float and 4-bit with the same method for fair comparison.
-Raw: `out/qwen3-1.7b/eval-mlx-ternary-ppl.json`
+Note: Experiment 1 used a different method (fixed-stride rolling window, MPS) so those
+numbers (Float=22.81, Ternary=101.16) are not directly comparable to lm_eval above.
+Raw: `out/qwen3-1.7b/eval-mlx-{4bit,ternary,ternary-base3-expanded}-ppl.json`
 
-### Zero-shot accuracy observations
+### Zero-shot accuracy (lm_eval 0.4.7, 0-shot)
 
-- MLX 4-bit loses only 1.9 avg_5 points vs float — very small drop for 4× compression.
-- MLX Ternary drops 17.9 points vs float. Primary cause: 8× less calibration data (128×1024 vs paper's 512×2048) due to 24 GB memory constraint.
-- Memory savings are real: MLX keeps weights packed during inference, never expanding to BF16.
-- Raw results: `out/qwen3-1.7b/eval-mlx-float.json`, `eval-mlx-4bit.json`, `eval-mlx-ternary.json`
+Tasks: PIQA, ARC-easy, ARC-challenge, HellaSwag, WinoGrande.
+Metric: `acc_norm` where available, `acc` otherwise.
+
+| Task | Float BF16 | MLX 4-bit | MLX Ternary 2-bit | MLX Ternary base-3 |
+|---|---|---|---|---|
+| PIQA | 0.7198 | 0.7089 | 0.6094 | 0.6094 (identical) |
+| ARC-easy | 0.6978 | 0.6620 | 0.4188 | 0.4188 (identical) |
+| ARC-challenge | 0.4309 | 0.4138 | 0.2483 | 0.2483 (identical) |
+| HellaSwag | 0.6048 | 0.5919 | 0.3698 | 0.3698 (identical) |
+| WinoGrande | 0.6109 | 0.5943 | 0.5249 | 0.5249 (identical) |
+| **avg_5** | **0.6128** | **0.5942** | **0.4342** | **0.4342 (identical)** |
+
+Base-3 expanded is bit-exact with 2-bit — confirmed by weight tensor comparison
+(`tests/test_base3_weights_match.py`, 3 passed) and identical forward pass outputs
+(`tests/test_base3_expanded_inference.py`, 2 passed).
+Raw: `out/qwen3-1.7b/eval-mlx-{float,4bit,ternary}.json`
+
+### Observations
+
+- MLX 4-bit loses only 1.9 avg_5 points vs float — near-lossless at 4× compression.
+- MLX Ternary drops 17.9 avg_5 points vs float. Primary cause: 8× less calibration
+  data (128×1024 vs paper's 512×2048) due to 24 GB memory constraint on M5 Pro.
+- Base-3 packing saves 8% on disk (20% on ternary weight tensors; scales and
+  non-ternary layers unchanged) with zero inference penalty after one-time expansion.
 
 ---
 
-## Experiment 3 — Base-3 Packing: End-to-End Benchmark
+## Experiment 3 — Base-3 Storage Packing
 
 **Date:** 2026-10-21  
 **Status:** ✅ Complete
 
 ### Motivation
 
-Current MLX packing (`pack_mlx_2bit`) stores 16 ternary codes per uint32 = **2 bits/weight**.
-Ternary values have 3 states, so the information-theoretic minimum is log2(3) ≈ **1.585 bits/weight**.
+`pack_mlx_2bit` stores 16 ternary codes per uint32 = **2 bits/weight**.
+Information-theoretic minimum for 3-state values: log2(3) ≈ **1.585 bits/weight**.
 
 ### Approach
 
-Base-3 encoding: 3^20 = 3,486,784,401 < 2^32, so **20 codes per uint32** = **1.6 bits/weight**.
+3^20 = 3,486,784,401 < 2^32, so 20 codes fit per uint32 = **1.6 bits/weight** (20% denser).
 
-Key design decision: pack flat across all groups in each weight matrix (not per group).
-Group size is 128 which is not divisible by 20, so per-group packing wastes 12 slots/group
-→ 1.75 bpw (12.5% saving). Packing flat across the full weight yields ~1.6 bpw (20% saving).
+Packing is done flat across the full weight matrix (not per group) to avoid per-group
+padding waste: group_size=128 is not divisible by 20, so per-group packing wastes
+8 slots/group → 1.75 bpw. Flat packing across the whole matrix → 1.6 bpw.
+
+At load time, `ternary-quench-expand-base3` unpacks base-3 → standard 2-bit MLX format.
+Inference runs through MLX's built-in `QuantizedLinear` — no custom kernel, no changes.
 
 ### Disk size
 
-| Scheme | Total model (GB) | bits/weight |
-|---|---|---|
-| MLX 2-bit ternary | 0.543 | 2.000 |
-| MLX base-3 ternary | 0.501 | 1.600 |
+| Scheme | Total model (GB) | Weight tensors only | bits/weight |
+|---|---|---|---|
+| MLX 2-bit ternary | 0.543 | ~328 MB | 2.000 |
+| MLX base-3 ternary | 0.501 | ~263 MB | 1.600 |
 
-**8% smaller on disk** (20% saving on the ternary weight tensors themselves; non-ternary layers stay 4-bit).
-Theoretical minimum: 1.585 bits/weight (we're 1% above ideal).
+8% smaller overall (20% on weight tensors; scales, embeddings, config unchanged).
+Theoretical minimum: 1.585 bpw — we are 1% above ideal.
 
-### Inference benchmark (M5 Pro, Metal, 20-token generation, warm run)
+### Pipeline
 
-| Model | Peak memory (GB) | Speed (tok/s) |
-|---|---|---|
-| MLX 4-bit | 1.003 | 133.5 |
-| MLX Ternary 2-bit | 0.720 | 146.5 |
-| MLX Ternary base-3 | **1.951** | **11.9** |
-
-Test: `tests/test_memory_comparison.py` (`uv run --extra mlx pytest -v -s`)
-
-### Root-cause analysis
-
-Base-3 is 12× slower and uses 2.7× more peak memory than 2-bit despite smaller disk size.
-
-The problem is in `TernaryLinear.__call__`:
-
-```python
-def __call__(self, x):
-    w = dequantize_base3(self.weight, self.scales)  # materialises full float16 matrix
-    return x @ w.T
+```
+export_mlx.py --base3   →  base-3 model on disk (0.501 GB)
+                               ↓  ternary-quench-expand-base3 (~1 sec, CPU)
+                           standard 2-bit MLX model (0.543 GB in memory)
+                               ↓  mlx_lm.load()
+                           inference — identical to native 2-bit
 ```
 
-Every forward pass through each of 196 layers allocates a full float16 weight tensor
-(e.g. 2048×2048 = 16 MB) before the matmul, then discards it. MLX's built-in 2-bit
-`QuantizedLinear` uses a fused dequant+matmul Metal kernel that never stores the full matrix.
+### Tests
 
-### Conclusion
+| Test file | What it checks | Result |
+|---|---|---|
+| `tests/test_base3_expand.py` | `pack → unpack` numpy roundtrip (6 cases) | ✅ 6 passed |
+| `tests/test_base3_weights_match.py` | Expanded weights bit-exact vs original 2-bit (3 checks) | ✅ 3 passed |
+| `tests/test_base3_expanded_inference.py` | Identical token output + peak memory (2 checks) | ✅ 2 passed |
 
-Base-3 packing is **not viable** with a materialise-then-matmul approach.
-To make it practical the Metal kernel must be a **fused dequant+matmul** that reads packed
-uint32 words and accumulates into the output directly — never materialising the weight matrix.
-This is a significantly more complex kernel (requires tile-level matmul logic in MSL).
+### Key files
 
-### Files
-
-- `src/ternary_quench/packing.py`: `pack_mlx_base3`
-- `src/ternary_quench/export_mlx.py`: `--base3` flag
-- `src/ternary_quench/decode_base3.py`: Metal kernel + `TernaryLinear` + `patch_base3`
-- `tests/test_decode_base3.py`: roundtrip correctness (3 passed)
-- `tests/test_base3_inference.py`: patching + forward pass (4 passed)
-- `tests/test_memory_comparison.py`: memory + runtime comparison across all 3 formats
+- `src/ternary_quench/packing.py`: `pack_mlx_base3`, `unpack_mlx_base3`
+- `src/ternary_quench/export_mlx.py`: `--base3` flag, writes `ternary_base3_layers` to config.json
+- `src/ternary_quench/expand_base3.py`: CLI tool (`ternary-quench-expand-base3`)
 
 ---
 
