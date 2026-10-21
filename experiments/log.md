@@ -128,7 +128,20 @@ Metric: `acc_norm` where available, `acc` otherwise.
 | WinoGrande | 0.6109 | 0.5943 | 0.5249 |
 | **avg_5** | **0.6128** | **0.5942** | **0.4342** |
 
-### Observations
+### WikiText-2 perplexity (lm_eval 0.4.7, document-level rolling loglikelihood)
+
+| Model | Word perplexity ↓ |
+|---|---|
+| Float BF16 | — (pending) |
+| MLX 4-bit | 22.92 |
+| MLX Ternary 2-bit | 334.44 |
+
+Note: Experiment 1 reported Float=22.81 / Ternary=101.16 perplexity using `scripts/benchmark.py`
+(fixed-stride rolling window on MPS). The lm_eval method above evaluates full documents and gives
+different absolute numbers — run Float and 4-bit with the same method for fair comparison.
+Raw: `out/qwen3-1.7b/eval-mlx-ternary-ppl.json`
+
+### Zero-shot accuracy observations
 
 - MLX 4-bit loses only 1.9 avg_5 points vs float — very small drop for 4× compression.
 - MLX Ternary drops 17.9 points vs float. Primary cause: 8× less calibration data (128×1024 vs paper's 512×2048) due to 24 GB memory constraint.
