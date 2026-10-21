@@ -107,12 +107,17 @@ Benchmark run: `uv run python scripts/benchmark.py --model Qwen/Qwen3-1.7B --ter
 | MLX 4-bit | `mlx_lm.convert --q-bits 4`, ~2 min, no training | 0.912 |
 | MLX Ternary | CAT-Q training + `export_mlx.py` | 0.543 |
 
-### Inference metrics (MLX, peak Metal memory)
+### Inference metrics (MLX, peak Metal memory, M5 Pro)
 
-| Metric | Float BF16 | MLX 4-bit | MLX Ternary |
+| Model | Disk (GB) | Peak memory (GB) | Speed (tok/s) |
 |---|---|---|---|
-| Disk size (GB) | 3.80 | 0.912 | 0.543 |
-| Peak memory (GB) | — | 2.183 | 1.249 |
+| Float BF16 | 3.80 | — | — |
+| MLX 4-bit | 0.912 | 1.004 | 126.4 |
+| MLX Ternary 2-bit | 0.543 | 0.720 | 147.7 |
+| MLX Ternary base-3 (expanded) | 0.501 | 0.720 | 143.5 |
+
+Base-3 is 8% smaller on disk than 2-bit. Peak memory and speed are identical
+after the one-time `ternary-quench-expand-base3` conversion step.
 
 ### Zero-shot accuracy (5-task suite, lm_eval 0.4.7, 0-shot)
 
