@@ -10,24 +10,44 @@ import random
 from importlib.metadata import version
 from pathlib import Path
 
+import sys
+import types
+
 import numpy as np
+
+# lm_eval 0.4.7 imports hf_vlms which references transformers.AutoModelForVision2Seq,
+# removed in transformers 5. Stub the module before any lm_eval import.
+sys.modules.setdefault(
+    "lm_eval.models.hf_vlms", types.ModuleType("lm_eval.models.hf_vlms")
+)
 
 TASKS = ("piqa", "arc_easy", "arc_challenge", "hellaswag", "winogrande")
 
 
+# Namespaced dataset paths required by datasets 5.x (same overrides as evaluate_avg5.py).
+DATASET_OVERRIDES = {
+    "piqa":       {"dataset_path": "ybisk/piqa", "dataset_name": None,
+                   "dataset_kwargs": {"revision": "refs/convert/parquet"}},
+    "hellaswag":  {"dataset_path": "Rowan/hellaswag"},
+    "winogrande": {"dataset_path": "allenai/winogrande"},
+}
+
+
 def _task_specs():
-    """Match BitTern/projects/cat-q/quantize/utils.py."""
     import lm_eval
     from lm_eval import utils as lm_eval_utils
+    from lm_eval.tasks import TaskManager
 
+    manager = TaskManager(include_defaults=True)
     specs: list[str | dict] = []
     for task in TASKS:
-        if task != "piqa":
+        override = DATASET_OVERRIDES.get(task)
+        if override is None:
             specs.append(task)
             continue
-        path = Path(lm_eval.__file__).parent / "tasks" / "piqa" / "piqa.yaml"
-        config = lm_eval_utils.load_yaml_config(path, mode="full")
-        config["dataset_name"] = "plain_text"
+        entry = manager.task_index[task]
+        config = lm_eval_utils.load_yaml_config(Path(entry["yaml_path"]), mode="full")
+        config.update(override)
         specs.append(config)
     return specs
 
