@@ -8,6 +8,11 @@
 # model cannot be run directly from the base-3 directory and must be expanded
 # back to standard 2-bit before inference.
 #
+# Note: the default paths below use Qwen3-1.7B trained with reduced calibration
+# params (nsamples=128, seqlen=1024) to fit a 24 GB unified memory machine. The
+# goal was to demonstrate and verify base-3 compaction; for production quality
+# use the full paper params (nsamples=512, seqlen=2048) from qwen3.8-27b recipe.
+#
 # Inputs (must exist before running):
 #   $TERNARY_PREFIX  — ternary.pt from the training recipe
 #   $BASE_MLX        — 4-bit affine-quantized MLX base (mlx_lm.convert --q-bits 4)
